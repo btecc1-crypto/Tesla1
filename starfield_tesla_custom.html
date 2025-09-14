@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Starfield — Custom Controls</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; background:#000; overflow:hidden; }
+  #c { display:block; width:100vw; height:100vh; }
+  #ui {
+    position:fixed; top:12px; left:12px; right:12px;
+    display:flex; gap:8px; align-items:center; justify-content:space-between;
+    background:rgba(0,0,0,.55); color:#fff; padding:10px 12px; border-radius:12px;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; 
+    user-select:none;
+  }
+  #ui .group { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  #ui label { font-size:13px; opacity:.9; }
+  #ui input[type=range] { width:100px; }
+  #hint { position:fixed; bottom:12px; left:12px; right:12px; color:#bbb; 
+          text-align:center; font-size:12px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+  .btn {
+    border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:6px 12px; 
+    background:rgba(255,255,255,.08); color:#fff; cursor:pointer; font-size:13px;
+  }
+  .btn:active { transform:translateY(1px); }
+  #ui.hidden { display:none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div class="group">
+    <label>Stars <span id="countVal">900</span></label>
+    <input id="count" type="range" min="100" max="3000" step="50" value="900" />
+    <label>Speed <span id="speedVal">1.0</span>x</label>
+    <input id="speed" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+    <label>FOV <span id="fovVal">200</span></label>
+    <input id="fov" type="range" min="80" max="600" step="10" value="200" />
+    <label>Trail <span id="trailVal">1.0</span>x</label>
+    <input id="trail" type="range" min="0.5" max="3" step="0.1" value="1.0" />
+  </div>
+  <div class="group">
+    <label>Color</label>
+    <select id="colorMode">
+      <option value="classic">Classic (blue/white)</option>
+      <option value="rainbow">Rainbow</option>
+      <option value="white">White only</option>
+      <option value="green">Matrix Green</option>
+    </select>
+    <label>BG <span id="bgVal">0</span></label>
+    <input id="bg" type="range" min="0" max="50" step="1" value="0" />
+  </div>
+  <div class="group">
+    <button id="fs" class="btn">Fullscreen</button>
+    <button id="hide" class="btn">Hide UI</button>
+  </div>
+</div>
+<div id="hint">Çift tıkla UI aç/kapa. Park modunda tam ekran keyfi 🌌</div>
+<script>
+(function(){
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha:false });
+  let w=0,h=0, cx=0, cy=0, dpr=Math.max(1, Math.min(2, window.devicePixelRatio||1));
+  function resize(){
+    w = Math.round(window.innerWidth * dpr);
+    h = Math.round(window.innerHeight * dpr);
+    canvas.width = w; canvas.height = h;
+    canvas.style.width = '100vw'; canvas.style.height = '100vh';
+    cx = w/2; cy = h/2;
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
+
+  let starCount=900, speed=1.0, fov=200, trail=1.0, colorMode="classic", bg=0;
+  const stars = new Array(3000).fill(0).map(()=>({x:0,y:0,z:0,pz:0,hue:200}));
+
+  function resetStar(s){
+    s.x = (Math.random()*2-1) * w;
+    s.y = (Math.random()*2-1) * h;
+    s.z = Math.random()*w;
+    s.pz = s.z;
+    s.hue = Math.random()*360;
+  }
+  for (let i=0;i<stars.length;i++) resetStar(stars[i]);
+
+  let last=performance.now();
+  function loop(now){
+    const dt=Math.min(0.05,(now-last)/1000); last=now;
+    ctx.fillStyle=`rgb(${bg},${bg},${bg})`;
+    ctx.fillRect(0,0,w,h);
+    for(let i=0;i<starCount;i++){
+      const s=stars[i];
+      s.z -= (80*speed)*dt;
+      if(s.z<=1){ resetStar(s); s.z+=w; s.pz=s.z; }
+      const k=fov/s.z;
+      const x=cx+s.x*k, y=cy+s.y*k;
+      const pk=fov/s.pz, px=cx+s.x*pk, py=cy+s.y*pk; s.pz=s.z;
+      let col;
+      switch(colorMode){
+        case "rainbow": col=`hsl(${s.hue},80%,70%)`; break;
+        case "white": col="#fff"; break;
+        case "green": col="hsl(120,80%,70%)"; break;
+        default: col=`hsl(${200+Math.random()*60},70%,80%)`; 
+      }
+      ctx.strokeStyle=col;
+      ctx.lineWidth=Math.max(1,(2*(1-s.z/w))*dpr);
+      ctx.beginPath();
+      ctx.moveTo(px,py);
+      ctx.lineTo(x+(x-px)*(trail-1), y+(y-py)*(trail-1));
+      ctx.stroke();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // UI
+  const $=sel=>document.querySelector(sel);
+  const count=$('#count'),speedR=$('#speed'),fovR=$('#fov'),trailR=$('#trail'),bgR=$('#bg');
+  const countVal=$('#countVal'),speedVal=$('#speedVal'),fovVal=$('#fovVal'),trailVal=$('#trailVal'),bgVal=$('#bgVal');
+  const colorModeSel=$('#colorMode');
+
+  function setCount(v){starCount=+v; countVal.textContent=starCount;}
+  function setSpeed(v){speed=+v; speedVal.textContent=speed.toFixed(1);}
+  function setFov(v){fov=+v; fovVal.textContent=Math.round(fov);}
+  function setTrail(v){trail=+v; trailVal.textContent=trail.toFixed(1);}
+  function setBG(v){bg=+v; bgVal.textContent=bg;}
+  function setColor(v){colorMode=v;}
+  count.oninput=e=>setCount(e.target.value);
+  speedR.oninput=e=>setSpeed(e.target.value);
+  fovR.oninput=e=>setFov(e.target.value);
+  trailR.oninput=e=>setTrail(e.target.value);
+  bgR.oninput=e=>setBG(e.target.value);
+  colorModeSel.oninput=e=>setColor(e.target.value);
+  setCount(count.value);setSpeed(speedR.value);setFov(fovR.value);setTrail(trailR.value);setBG(bgR.value);setColor(colorModeSel.value);
+
+  $('#fs').onclick=()=>{
+    const el=document.documentElement;
+    const rfs=el.requestFullscreen||el.webkitRequestFullscreen||el.msRequestFullscreen||el.mozRequestFullScreen;
+    const efs=document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen||document.mozCancelFullScreen;
+    if(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement||document.mozFullScreenElement){
+      efs&&efs.call(document);
+    } else { rfs&&rfs.call(el); }
+  };
+  let uiHidden=false;
+  function toggleUI(){uiHidden=!uiHidden; $('#ui').classList.toggle('hidden',uiHidden);}
+  $('#hide').onclick=()=>toggleUI();
+  let lastTap=0;
+  window.addEventListener('touchend',()=>{
+    const now=Date.now();
+    if(now-lastTap<300)toggleUI();
+    lastTap=now;
+  },{passive:true});
+  setTimeout(()=>toggleUI(),5000);
+})();
+</script>
+</body>
+</html>
